@@ -10,12 +10,12 @@ integrator = Integrator(initial=0.0)
 scope = Scope()
 
 def my_model(t, dt):
-    # blockid=1;x=301;y=126
-    c1 = Constant(value=1.0)
-    # blockid=3;x=770;y=199
+    # blockid=1;x=190;y=76
+    c1 = Constant(value=0.1)
+    # blockid=2;x=367;y=118
+    i2 = Integrator(initial=5.0)
+    # blockid=3;x=543;y=147
     p3 = Plot()
-    # blockid=4;x=252;y=270
-    c4 = Constant(value=1.0)
     return y
 
 if __name__ == "__main__":

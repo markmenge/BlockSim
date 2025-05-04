@@ -7,6 +7,7 @@ Dynamic BlockSim editor - Phase 2: Visual Ports
   - Shows named input/output ports on blocks based on sim_blocks.py definitions.
   - Connections still manual via generic block clicks (Phase 3 needed for port-to-port).
 """
+import ast
 import sys
 import os
 import json
@@ -16,6 +17,8 @@ from tkinter import simpledialog, filedialog, messagebox
 import importlib.util
 from redbaron import RedBaron
 from collections import defaultdict
+from sim_blocks import simulate
+import pprint
 
 # --- Import SimBlock classes ---
 # Add error handling in case sim_blocks.py is missing or has issues
@@ -48,6 +51,49 @@ except Exception as e:
     SIM_BLOCKS_LOADED = False
     BLOCK_TYPE_MAP = {}
 
+# --- Add the helper function with DEBUG prints ---
+def extract_simple_params(code_str, expected_params):
+    """
+    Attempts to extract parameters like 'key=value' from a simple
+    constructor call string (e.g., 'i = Integrator(initial=5.0)')
+    using literal_eval for safety.
+    """
+    print(f"  [Debug extract_simple_params] Input code: {code_str}") # DEBUG
+    print(f"  [Debug extract_simple_params] Expected params: {expected_params}") # DEBUG
+    params = {}
+    match = re.search(r'\w+\((.*)\)', code_str)
+    if match:
+        args_str = match.group(1).strip()
+        print(f"  [Debug extract_simple_params] Found args string: '{args_str}'") # DEBUG
+        if not args_str:
+             print("  [Debug extract_simple_params] No args found.") # DEBUG
+             return params
+
+        raw_args = re.split(r',\s*(?![^()]*\))', args_str)
+        print(f"  [Debug extract_simple_params] Split raw_args: {raw_args}") # DEBUG
+
+        for arg in raw_args:
+            arg = arg.strip()
+            key_value_match = re.match(r'(\w+)\s*=\s*(.*)', arg)
+            if key_value_match:
+                key = key_value_match.group(1).strip()
+                value_str = key_value_match.group(2).strip()
+                print(f"    [Debug extract_simple_params] Found key='{key}', value_str='{value_str}'") # DEBUG
+                if key in expected_params:
+                    try:
+                        evaluated_value = ast.literal_eval(value_str)
+                        params[key] = evaluated_value
+                        print(f"    [Debug extract_simple_params] Successfully eval'd '{key}' = {evaluated_value} ({type(evaluated_value)})") # DEBUG
+                    except Exception as e:
+                        print(f"    [Debug extract_simple_params] literal_eval FAILED for key='{key}', value='{value_str}'. Error: {e}. Using default.") # DEBUG
+                else:
+                     print(f"    [Debug extract_simple_params] Param key '{key}' not in expected params {list(expected_params.keys())}. Skipping.") # DEBUG
+            # else: print(f"    [Debug extract_simple_params] Argument '{arg}' not in key=value format. Skipping.") # DEBUG (Optional)
+    else:
+         print(f"  [Debug extract_simple_params] Regex did not find '(...)' in code.") # DEBUG
+
+    print(f"  [Debug extract_simple_params] Returning params: {params}") # DEBUG
+    return params
 
 # Global reference for callbacks
 current_app = None
@@ -654,22 +700,91 @@ class BlockSimApp:
 
         messagebox.showinfo('Save','Saved model code and connections JSON.', parent=self.root)
 
-
     def on_run(self):
-        # --- This needs major update for Phase 5 (Simulation Engine) ---
-        messagebox.showinfo("Run", "Simulation execution needs to be updated for the new Port-based system (Phase 5).\nRunning the old code directly will likely fail or ignore visual connections.", parent=self.root)
-        # (Keep old run logic commented out or behind a check for now)
-        return
+        """
+        Runs the simulation using the SimulationEngine, attempting to extract
+        parameters from block code snippets. Includes debugging prints.
+        """
+        print("\n--- Preparing Simulation Run from GUI (DEBUG ENABLED) ---") # DEBUG
+        # ... (initial checks for SIM_BLOCKS_LOADED, self.objs) ...
 
-        # OLD RUN LOGIC (for reference, but likely won't work correctly)
-        # if not self.current_path: messagebox.showwarning('Run', ...); return
-        # save_choice = messagebox.askyesnocancel(...)
-        # ...
-        # try:
-        #     ... (importlib stuff) ...
-        #     m.simulate(m.my_model, ...) # This simulate needs changing
-        #     m.scope.plot(...) # Plotting needs changing (use Plot block's on_simulation_end)
-        # ... (exception handling) ...
+        block_instances_map = {}
+        failed_instantiations = []
+
+        print("[Debug on_run] Starting block instantiation loop...") # DEBUG
+        for bid, gui_block in self.objs.items():
+            print(f"\n[Debug on_run] Processing Block ID: {bid}") # DEBUG
+            block_title = gui_block.title
+            print(f"[Debug on_run]   GUI Block Title: '{block_title}'") # DEBUG
+            print(f"[Debug on_run]   GUI Code Snippet: '{gui_block.code_text}'") # DEBUG
+            block_class = BLOCK_TYPE_MAP.get(block_title)
+
+            if block_class:
+                # --- Extract Parameters ---
+                params = {}
+                expected_params = {}
+                try:
+                    temp_instance_for_params = block_class()
+                    expected_params = temp_instance_for_params.get_parameters()
+                    print(f"[Debug on_run]   Expected Params for {block_title}: {expected_params}") # DEBUG
+                    # Call extraction helper
+                    params = extract_simple_params(gui_block.code_text, expected_params)
+                    # Print result AFTER calling helper
+                    print(f"[Debug on_run]   Extracted Params Dict: {pprint.pformat(params)}") # DEBUG (Use pprint for readability)
+                except Exception as e:
+                    print(f"[Debug on_run]   WARNING: Error during param extraction setup for block {bid}: {e}")
+
+                # --- Instantiate SimBlock ---
+                print(f"[Debug on_run]   Attempting to instantiate: {block_class.__name__}(**{pprint.pformat(params)})") # DEBUG
+                instance = None
+                try:
+                    instance = block_class(**params)
+                    block_instances_map[bid] = instance
+                    print(f"[Debug on_run]   Successfully instantiated instance: {instance}") # DEBUG
+                    # --- Verify parameter values on instance ---
+                    if hasattr(instance, 'value'): print(f"    [Debug on_run]   Instance check: instance.value = {getattr(instance, 'value', 'N/A')}") # DEBUG
+                    if hasattr(instance, 'initial'): print(f"    [Debug on_run]   Instance check: instance.initial = {getattr(instance, 'initial', 'N/A')}") # DEBUG
+                    if hasattr(instance, 'state'): print(f"    [Debug on_run]   Instance check: instance.state = {getattr(instance, 'state', 'N/A')}") # DEBUG
+
+                except TypeError as e:
+                     print(f"ERROR: TypeError instantiating {block_title} for block {bid} with params {params}: {e}")
+                     failed_instantiations.append(f"{bid} (Param mismatch)")
+                except Exception as e:
+                    print(f"ERROR: Failed to instantiate SimBlock for GUI block {bid} (Type: {block_title}) with params {params}: {e}")
+                    failed_instantiations.append(f"{bid} (Instantiation error)")
+            else:
+                print(f"Warning: Cannot instantiate SimBlock for GUI block {bid}. Unknown type: '{block_title}'.")
+                failed_instantiations.append(f"{bid} (Unknown type)")
+
+        print("\n[Debug on_run] Finished block instantiation loop.") # DEBUG
+        # ... (rest of error checking for failed_instantiations, block_instances_map) ...
+
+        # --- Gather Connection Data ---
+        connections_list = []
+        print(f"[Debug on_run] Gathering connections from {len(Connection._instances)} visual instances...") # DEBUG
+        for conn in Connection._instances:
+             print(f"  [Debug on_run] Checking conn: src={conn.src.bid if conn.src else 'None'}:{conn.src_port}, dst={conn.dst.bid if conn.dst else 'None'}:{conn.dst_port}") # DEBUG
+             if conn.src and conn.dst and conn.src_port and conn.dst_port:
+                 # Ensure connected blocks were successfully instantiated
+                 if conn.src.bid in block_instances_map and conn.dst.bid in block_instances_map:
+                     print(f"    [Debug on_run] ADDING connection to list.") # DEBUG
+                     connections_list.append([
+                         conn.src.bid, conn.src_port,
+                         conn.dst.bid, conn.dst_port
+                     ])
+                 else:
+                     print(f"    [Debug on_run] SKIPPING connection - block not instantiated.") # DEBUG
+             else:
+                 print(f"    [Debug on_run] SKIPPING connection - invalid conn data.") # DEBUG
+        # --- Call the global simulate function ---
+        try:
+            t_stop = 5.0; dt = 0.01
+            print(f"\n[Debug on_run] Calling simulation engine (t_stop={t_stop}, dt={dt})...") # DEBUG
+            simulate(block_instances_map, connections_list, t_stop=t_stop, dt=dt)
+            print("[Debug on_run] --- GUI Simulation Run Attempt Finished ---") # DEBUG
+        except Exception as e:
+            # ... (error handling) ...
+            print(f"ERROR during simulation run: {e}")
 
     def insert_block(self,typ):
         # (Needs update to fetch and pass ports_info)

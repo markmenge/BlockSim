@@ -1,327 +1,316 @@
 # filename: sim_blocks.py
-# Required packages:
-#   pip install matplotlib numpy
+# Additions for Phase 5: Simulation Engine
 
 import numpy as np
 import matplotlib.pyplot as plt
 from abc import ABC, abstractmethod
+from collections import defaultdict, deque # Add deque for Kahn's algorithm
 
-# --- Base Class ---
-
+# --- Base Class (SimBlock - unchanged from Phase 1) ---
 class SimBlock(ABC):
-    """
-    Abstract base class for all simulation blocks in BlockSim.
-    Defines the required interface for metadata and simulation updates.
-    """
-
+    # (Keep existing SimBlock definition with get_ports, get_parameters, update, on_simulation_end)
+    # ...
     @abstractmethod
     def get_ports(self):
-        """
-        Returns a dictionary describing the block's input and output ports.
-
-        Returns:
-            dict: {'inputs': {'port_name': type_str, ...},
-                   'outputs': {'port_name': type_str, ...}}
-                  Type strings are informational for now (e.g., 'float', 'int', 'any').
-        """
         raise NotImplementedError()
-
     def get_parameters(self):
-        """
-        Returns a dictionary describing the block's configurable parameters.
-        These are typically set at instantiation time.
-
-        Returns:
-            dict: {'param_name': type_str, ...}
-                  Returns an empty dict if the block has no parameters.
-        """
-        return {} # Default: no parameters
-
+        return {}
     @abstractmethod
     def update(self, t, dt, inputs):
-        """
-        Executes the block's logic for a single time step.
-
-        Args:
-            t (float): Current simulation time.
-            dt (float): Simulation time step.
-            inputs (dict): A dictionary where keys are the block's defined
-                           input port names and values are the signals
-                           connected to those ports for this timestep.
-                           {'port_name': value, ...}
-
-        Returns:
-            dict: A dictionary where keys are the block's defined
-                  output port names and values are the calculated outputs
-                  for this timestep. {'port_name': value, ...}
-                  Returns an empty dict if the block has no outputs.
-        """
         raise NotImplementedError()
-
     def on_simulation_end(self):
-        """
-        Optional hook called once after the simulation loop finishes.
-        Useful for blocks that need to perform final actions, like plotting.
-        Does nothing by default.
-        """
-        pass # Default behavior is to do nothing
+        pass
 
-# --- Block Implementations ---
-
+# --- Block Implementations (Constant, Sum, Integrator, Plot - unchanged) ---
 class Constant(SimBlock):
-    """
-    Outputs a constant value.
-    """
-    def __init__(self, value=1.0):
-        super().__init__()
-        self.value = float(value)
-
-    def get_ports(self):
-        """Defines one output port."""
-        return {
-            'inputs': {},
-            'outputs': {'out': 'float'}
-        }
-
-    def get_parameters(self):
-        """Defines the 'value' parameter."""
-        return {'value': 'float'}
-
-    def update(self, t, dt, inputs):
-        """Returns the constant value on the 'out' port."""
-        # inputs dict is ignored as this block has no inputs
-        return {'out': self.value}
+    # ... (no changes) ...
+    def __init__(self, value=1.0): super().__init__(); self.value = float(value)
+    def get_ports(self): return {'inputs': {}, 'outputs': {'out': 'float'}}
+    def get_parameters(self): return {'value': 'float'}
+    def update(self, t, dt, inputs): return {'out': self.value}
 
 class Sum(SimBlock):
-    """
-    Adds two input signals together. Defaults inputs to 0 if not connected.
-    """
-    def __init__(self):
-        super().__init__()
-        # No parameters needed for basic 2-input sum
-
-    def get_ports(self):
-        """Defines two input ports ('in1', 'in2') and one output port ('out')."""
-        return {
-            'inputs': {'in1': 'float', 'in2': 'float'},
-            'outputs': {'out': 'float'}
-        }
-
-    # No get_parameters needed (returns {} by default)
-
+    # ... (no changes) ...
+    def __init__(self): super().__init__()
+    def get_ports(self): return {'inputs': {'in1': 'float', 'in2': 'float'}, 'outputs': {'out': 'float'}}
     def update(self, t, dt, inputs):
-        """Calculates sum = in1 + in2. Uses 0 for unconnected inputs."""
-        in1_value = inputs.get('in1', 0.0) # Default to 0 if 'in1' key is missing
-        in2_value = inputs.get('in2', 0.0) # Default to 0 if 'in2' key is missing
-        sum_value = float(in1_value) + float(in2_value)
-        return {'out': sum_value}
+        in1 = float(inputs.get('in1', 0.0)); in2 = float(inputs.get('in2', 0.0))
+        return {'out': in1 + in2}
 
 class Integrator(SimBlock):
-    """
-    Computes the integral of an input signal over time using Euler method.
-    """
+    # ... (no changes) ...
     def __init__(self, initial=0.0):
-        super().__init__()
-        self.initial = float(initial)
-        self.state = float(initial)
-
-    def get_ports(self):
-        """Defines one input ('signal') and one output ('state')."""
-        return {
-            'inputs': {'signal': 'float'},
-            'outputs': {'state': 'float'}
-        }
-
-    def get_parameters(self):
-        """Defines the 'initial' value parameter."""
-        return {'initial': 'float'}
-
+        super().__init__(); self.initial = float(initial); self.state = float(initial)
+    def get_ports(self): return {'inputs': {'signal': 'float'}, 'outputs': {'state': 'float'}}
+    def get_parameters(self): return {'initial': 'float'}
     def update(self, t, dt, inputs):
-        """Updates the internal state based on the input signal."""
-        input_signal = inputs.get('signal', 0.0) # Default to 0 if unconnected
-        self.state += float(input_signal) * dt
+        input_signal = float(inputs.get('signal', 0.0)); self.state += input_signal * dt
         return {'state': self.state}
 
 class Plot(SimBlock):
-    """
-    Collects data from its input port during simulation and generates a plot
-    at the end of the simulation.
-    """
+    # ... (no changes needed, uses on_simulation_end) ...
     def __init__(self, title="Plot Output", ylabel="Value", num_inputs=1):
-        super().__init__()
-        self.plot_title = title
-        self.plot_ylabel = ylabel
-        self.num_inputs = max(1, int(num_inputs)) # Ensure at least one input
-
-        # Data storage
-        self.t_data = []
-        # Store data for multiple inputs if needed
+        super().__init__(); self.plot_title = title; self.plot_ylabel = ylabel
+        self.num_inputs = max(1, int(num_inputs)); self.t_data = []
         self.y_data = [[] for _ in range(self.num_inputs)]
-
     def get_ports(self):
-        """Defines input port(s) 'in1', 'in2', ... and no outputs."""
-        input_ports = {f'in{i+1}': 'any' for i in range(self.num_inputs)}
-        return {
-            'inputs': input_ports,
-            'outputs': {}
-        }
-
-    def get_parameters(self):
-        """Defines plot configuration parameters."""
-        return {'title': 'string', 'ylabel': 'string', 'num_inputs': 'int'}
-
+        return {'inputs': {f'in{i+1}': 'any' for i in range(self.num_inputs)}, 'outputs': {}}
+    def get_parameters(self): return {'title': 'string', 'ylabel': 'string', 'num_inputs': 'int'}
     def update(self, t, dt, inputs):
-        """Appends the current time and input value(s) to internal lists."""
         self.t_data.append(t)
         for i in range(self.num_inputs):
-            port_name = f'in{i+1}'
-            # Append None if input is not connected or value is missing
-            value = inputs.get(port_name, None)
-            self.y_data[i].append(value)
-        return {} # No outputs
-
+            self.y_data[i].append(inputs.get(f'in{i+1}', None))
+        return {}
     def on_simulation_end(self):
-        """Generates and displays the plot using matplotlib."""
         print(f"Plotting data for '{self.plot_title}'...")
+        # ... (rest of plotting logic) ...
         if not self.t_data or all(not y for y in self.y_data):
-            print("  No data collected for plotting.")
-            return
-
+            print("  No data collected for plotting."); return
         plt.figure()
+        has_data = False
         for i in range(self.num_inputs):
-            # Only plot if there's actual data for this input
-            # Filter out None values which indicate missing data points
             valid_t = [t for t, y in zip(self.t_data, self.y_data[i]) if y is not None]
             valid_y = [y for y in self.y_data[i] if y is not None]
-
             if valid_t:
                 label = f"Input {i+1}" if self.num_inputs > 1 else "Input Signal"
                 plt.plot(valid_t, valid_y, label=label)
-            else:
-                print(f"  No valid data points for input {i+1}.")
-
-
-        plt.xlabel("Time (s)")
-        plt.ylabel(self.plot_ylabel)
-        plt.title(self.plot_title)
+                has_data = True
+        if not has_data: print("  No valid data points found across all inputs."); plt.close(); return
+        plt.xlabel("Time (s)"); plt.ylabel(self.plot_ylabel); plt.title(self.plot_title)
         plt.grid(True)
-        if self.num_inputs > 1 and any(valid_t for valid_t, _ in zip(self.t_data, self.y_data[0])): # Only show legend if useful
-            plt.legend()
-        try:
-            plt.show()
-        except Exception as e:
-            print(f"Error displaying plot: {e}")
-            print("Ensure you have a suitable matplotlib backend configured.")
+        if self.num_inputs > 1: plt.legend()
+        try: plt.show()
+        except Exception as e: print(f"Error displaying plot: {e}")
 
 
-# --- Simulation Loop (Placeholder - Needs Graph Engine) ---
+# --- Phase 5: Simulation Engine ---
 
-def simulate(block_instances, t_stop, dt):
+class SimulationEngine:
     """
-    (Placeholder) Basic discrete-time simulation loop.
+    Manages the execution of a BlockSim model based on block instances
+    and explicit port connections.
+    """
+    def __init__(self, block_instances_map, connections_list):
+        """
+        Initializes the simulation engine.
 
-    *** NOTE: This function needs to be replaced by a graph-based simulation
-    *** engine that understands block connections via named ports and executes
-    *** blocks in the correct topological order. This current version does NOT
-    *** correctly handle data flow based on the new port structure.
+        Args:
+            block_instances_map (dict): Map of {block_id: SimBlock_instance}.
+            connections_list (list): List of connections, where each item is
+                                     [src_id, src_port, dst_id, dst_port].
+        """
+        self.blocks = block_instances_map # {block_id: instance}
+        self.raw_connections = connections_list
+        self.connections = defaultdict(dict) # Processed: {dst_id: {dst_port: (src_id, src_port)}}
+        self.execution_order = [] # List of block_ids
+
+        print("Initializing Simulation Engine...")
+        self._build_graph()
+        self._topological_sort()
+        print(f"Execution Order: {self.execution_order}")
+
+    def _build_graph(self):
+        """Processes raw connections into an efficient lookup structure."""
+        print("Building connection graph...")
+        for conn in self.raw_connections:
+            src_id, src_port, dst_id, dst_port = conn
+
+            # Validation
+            if src_id not in self.blocks:
+                print(f"Warning: Source block ID {src_id} in connection not found in instances. Skipping connection.")
+                continue
+            if dst_id not in self.blocks:
+                print(f"Warning: Destination block ID {dst_id} in connection not found in instances. Skipping connection.")
+                continue
+
+            src_block = self.blocks[src_id]
+            dst_block = self.blocks[dst_id]
+
+            # Check if ports exist
+            src_ports = src_block.get_ports().get('outputs', {})
+            dst_ports = dst_block.get_ports().get('inputs', {})
+
+            if src_port not in src_ports:
+                print(f"Warning: Source port '{src_port}' not found in outputs of block {src_id} ({type(src_block).__name__}). Skipping connection.")
+                continue
+            if dst_port not in dst_ports:
+                print(f"Warning: Destination port '{dst_port}' not found in inputs of block {dst_id} ({type(dst_block).__name__}). Skipping connection.")
+                continue
+
+            # Check for multiple connections to the same input port
+            if dst_port in self.connections[dst_id]:
+                 existing_src_id, existing_src_port = self.connections[dst_id][dst_port]
+                 print(f"Warning: Input port '{dst_port}' on block {dst_id} already connected to {existing_src_id}:{existing_src_port}. Overwriting with connection from {src_id}:{src_port}.")
+
+            # Store connection: Destination block -> input port -> (Source block, output port)
+            self.connections[dst_id][dst_port] = (src_id, src_port)
+        print("Connection graph built.")
+
+    def _topological_sort(self):
+        """
+        Calculates the block execution order using Kahn's algorithm.
+        Detects cycles.
+        """
+        print("Calculating execution order (Topological Sort)...")
+        in_degree = {block_id: 0 for block_id in self.blocks}
+        # Adjacency list: source_block -> list of destination_blocks
+        adj = defaultdict(list)
+
+        # Calculate in-degrees and build adjacency list
+        for src_id in self.blocks:
+            # Find all blocks that *receive* input from src_id
+            for dst_id, input_ports in self.connections.items():
+                 for dst_port, (conn_src_id, _) in input_ports.items():
+                      if conn_src_id == src_id:
+                           if dst_id not in adj[src_id]: # Avoid duplicates in adj list
+                                adj[src_id].append(dst_id)
+                           in_degree[dst_id] += 1 # Increment in-degree of the destination
+
+        # Initialize queue with nodes having in-degree 0
+        queue = deque([block_id for block_id in self.blocks if in_degree[block_id] == 0])
+        self.execution_order = []
+        count = 0 # Count of visited nodes
+
+        while queue:
+            u = queue.popleft()
+            self.execution_order.append(u)
+            count += 1
+
+            # For each neighbor v of u, decrease its in-degree
+            for v in adj[u]:
+                in_degree[v] -= 1
+                # If in-degree becomes 0, add it to the queue
+                if in_degree[v] == 0:
+                    queue.append(v)
+
+        # Check for cycles
+        if count != len(self.blocks):
+            # Find nodes involved in the cycle (those with in_degree > 0) for better error message
+            cycle_nodes = [bid for bid, degree in in_degree.items() if degree > 0]
+            error_msg = f"Cycle detected in the block graph. Cannot determine execution order. Nodes with remaining in-degree: {cycle_nodes}"
+            print(f"ERROR: {error_msg}")
+            # Clear execution order to prevent running
+            self.execution_order = []
+            raise ValueError(error_msg)
+        else:
+            print("Topological sort successful.")
+
+
+    def run(self, t_stop, dt):
+        """
+        Runs the simulation loop.
+
+        Args:
+            t_stop (float): Simulation end time.
+            dt (float): Simulation time step.
+        """
+        if not self.execution_order:
+             print("Error: Cannot run simulation. Invalid execution order (possibly due to cycles or build errors).")
+             return
+
+        print(f"--- Running Simulation Engine (t_stop={t_stop}, dt={dt}) ---")
+        t = 0.0
+        # Stores the outputs of all blocks for the *current* time step
+        # Structure: {block_id: {port_name: value, ...}}
+        current_outputs = {block_id: {} for block_id in self.blocks}
+
+        # --- Simulation Time Loop ---
+        while t <= t_stop:
+            # --- Evaluate blocks in topological order ---
+            for block_id in self.execution_order:
+                block = self.blocks[block_id]
+                inputs_for_block = {}
+
+                # Gather inputs for this block based on connections
+                if block_id in self.connections:
+                    for dst_port, (src_id, src_port) in self.connections[block_id].items():
+                        # Get the output from the source block computed *earlier* in this step
+                        if src_id in current_outputs and src_port in current_outputs[src_id]:
+                            inputs_for_block[dst_port] = current_outputs[src_id][src_port]
+                        else:
+                            # Source block or port hasn't produced output (shouldn't happen with topo sort)
+                            # Or input is simply unconnected - use default (None or 0?)
+                            # Current SimBlock update methods handle missing keys with .get()
+                            # print(f"Debug: Input {block_id}:{dst_port} from {src_id}:{src_port} - source output not found yet.")
+                            pass # Let the block's update handle missing input via .get()
+
+                # Execute the block's update logic
+                try:
+                    outputs = block.update(t, dt, inputs_for_block)
+                    # Store the outputs produced by this block in this time step
+                    current_outputs[block_id] = outputs if outputs else {} # Ensure it's always a dict
+                except Exception as e:
+                    print(f"ERROR during update of block {block_id} ({type(block).__name__}) at t={t:.3f}: {e}")
+                    # Option: Stop simulation or try to continue? Stop is safer.
+                    print("Simulation stopped due to error.")
+                    # Optionally call end hooks even on error?
+                    self._call_end_hooks()
+                    raise # Re-raise the exception
+
+            # --- Time Increment ---
+            t += dt
+
+        print(f"--- Simulation Loop Finished at t={t-dt:.3f} ---")
+
+        # --- Call end-of-simulation hooks ---
+        self._call_end_hooks()
+
+        print("--- Simulation Engine Finished ---")
+
+    def _call_end_hooks(self):
+        """Calls the on_simulation_end method for all blocks."""
+        print("--- Calling on_simulation_end hooks ---")
+        for block_id in self.blocks: # Call in arbitrary order, usually fine
+             try:
+                 self.blocks[block_id].on_simulation_end()
+             except Exception as e:
+                 print(f"Error during on_simulation_end for block {block_id} ({type(self.blocks[block_id]).__name__}): {e}")
+
+
+# --- Global simulate function (Now uses the Engine) ---
+
+def simulate(block_instances_map, connections_list, t_stop, dt):
+    """
+    High-level function to run a simulation using the SimulationEngine.
 
     Args:
-        block_instances (list): A list containing instances of SimBlock subclasses.
-                                (Order may not matter once topological sort is used).
+        block_instances_map (dict): Map of {block_id: SimBlock_instance}.
+        connections_list (list): List of connections [src_id, src_port, dst_id, dst_port].
         t_stop (float): Simulation end time.
         dt (float): Simulation time step.
     """
-    print("--- Starting Simulation (Placeholder Engine) ---")
-    t = 0.0
+    try:
+        engine = SimulationEngine(block_instances_map, connections_list)
+        engine.run(t_stop, dt)
+    except ValueError as e: # Catch cycle errors etc. from engine init
+        print(f"Simulation setup failed: {e}")
+    except Exception as e:
+        print(f"An unexpected error occurred during simulation: {e}")
+        import traceback
+        traceback.print_exc()
 
-    # --- Pre-computation / Graph Building (Required for real engine) ---
-    # 1. Build connection graph: which output port connects to which input port?
-    # 2. Perform topological sort to get execution order.
-    # 3. Initialize block states and outputs.
-    print("Warning: Using placeholder simulation loop. Data flow via ports is NOT implemented.")
-    print("Block execution order in this loop is arbitrary.")
-
-    # --- Simulation Time Loop ---
-    while t <= t_stop:
-        # --- In a real engine: ---
-        # 1. Iterate through blocks in *topological order*.
-        # 2. For each block, gather inputs from the outputs computed *earlier* in this step.
-        # 3. Call block.update(t, dt, gathered_inputs_dict).
-        # 4. Store the block's outputs for downstream blocks in *this* step.
-
-        # --- Placeholder execution (calls update on all blocks arbitrarily): ---
-        all_inputs_this_step = {} # In real engine, this would come from connections
-        all_outputs_this_step = {}
-        for block in block_instances:
-             # This is incorrect - inputs aren't passed correctly
-             outputs = block.update(t, dt, all_inputs_this_step)
-             # In real engine, store outputs keyed by block ID and port name
-             # For placeholder, just collect them (not useful)
-             all_outputs_this_step[block] = outputs # Example structure
-
-        # --- Time Increment ---
-        t += dt
-
-    print(f"--- Simulation Loop Finished at t={t-dt:.3f} ---")
-
-    # --- Call end-of-simulation hooks ---
-    print("--- Calling on_simulation_end hooks ---")
-    for block in block_instances:
-        try:
-            block.on_simulation_end()
-        except Exception as e:
-            print(f"Error during on_simulation_end for {type(block).__name__}: {e}")
-
-    print("--- Simulation Complete ---")
-
-# --- Example Usage (If run directly) ---
+# --- Example Usage (If run directly - Updated) ---
 if __name__ == "__main__":
-    print("Running simple sim_blocks.py example...")
+    print("Running sim_blocks.py engine example...")
 
-    # Instantiate blocks
-    c1 = Constant(value=1.0)
-    integ1 = Integrator(initial=0.0)
-    plot1 = Plot(title="Integrator Test", ylabel="Integrated Value")
+    # Instantiate blocks (Assign arbitrary IDs for the map)
+    # In GUI, these IDs come from the loaded model
+    block_map = {
+        1: Constant(value=1.0),
+        2: Integrator(initial=0.0),
+        3: Plot(title="Engine Test", ylabel="Integrated Value")
+    }
 
-    # Manually define connections for this example (normally done by engine)
-    # Connection: c1['out'] -> integ1['signal']
-    # Connection: integ1['state'] -> plot1['in1']
+    # Define connections using block IDs and port names
+    # Connection: 1['out'] -> 2['signal']
+    # Connection: 2['state'] -> 3['in1']
+    conn_list = [
+        [1, 'out', 2, 'signal'],
+        [2, 'state', 3, 'in1']
+    ]
 
-    # Store blocks in a list (order doesn't *really* matter for placeholder)
-    my_blocks = [c1, integ1, plot1]
-
-    # --- Simulate (using placeholder loop) ---
-    t_sim = 0.0
-    dt_sim = 0.01
-    t_stop_sim = 5.0
-
-    # Data storage for manual connection simulation
-    block_outputs = {} # Stores {'out': val} for each block instance
-
-    print("\n--- Running Manual Simulation Example ---")
-    while t_sim <= t_stop_sim:
-        # Evaluate Constant
-        c1_outputs = c1.update(t_sim, dt_sim, {})
-        block_outputs[c1] = c1_outputs
-
-        # Evaluate Integrator (using Constant's output)
-        integ1_inputs = {'signal': block_outputs[c1]['out']}
-        integ1_outputs = integ1.update(t_sim, dt_sim, integ1_inputs)
-        block_outputs[integ1] = integ1_outputs
-
-        # Evaluate Plot (using Integrator's output)
-        plot1_inputs = {'in1': block_outputs[integ1]['state']}
-        plot1_outputs = plot1.update(t_sim, dt_sim, plot1_inputs)
-        # block_outputs[plot1] = plot1_outputs # Plot has no outputs
-
-        t_sim += dt_sim
-
-    print(f"--- Manual Simulation Finished at t={t_sim-dt_sim:.3f} ---")
-
-    # Call end hooks
-    print("--- Calling on_simulation_end hooks ---")
-    for block in my_blocks:
-        block.on_simulation_end()
+    # Simulate using the global function which now uses the engine
+    simulate(block_map, conn_list, t_stop=5.0, dt=0.01)
 
     print("\n--- Example Complete ---")
-    # Note: If you run this directly, it will show the plot generated by plot1.
+    
