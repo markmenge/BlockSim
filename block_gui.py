@@ -21,34 +21,49 @@ from sim_blocks import simulate
 import pprint
 
 # --- Import SimBlock classes ---
-# Add error handling in case sim_blocks.py is missing or has issues
 try:
     # Ensure the directory containing sim_blocks.py is in the path
     script_dir = os.path.dirname(os.path.abspath(__file__))
     if script_dir not in sys.path:
         sys.path.insert(0, script_dir)
-    from sim_blocks import SimBlock, Constant, Sum, Integrator, Plot
-    SIM_BLOCKS_LOADED = True
 
-    # --- Map block type names (strings) to actual classes ---
+    # --- Corrected Import Line ---
+    from sim_blocks import (
+        SimBlock, Constant, Sum, Integrator, Plot,
+        Memory, CompareToConstant, LogicOp
+    )
+    SIM_BLOCKS_LOADED = True
+    print("DEBUG: Successfully imported classes from sim_blocks.py")
+
+except ImportError as e:
+    print(f"ERROR: Import failed. Could not find or load sim_blocks module or specific classes: {e}")
+    SIM_BLOCKS_LOADED = False
+    BLOCK_TYPE_MAP = {} # Define even on failure
+except NameError as e: # Catch NameError during BLOCK_TYPE_MAP creation
+    print(f"ERROR: NameError during import setup: {e}")
+    print("       This likely means a class name used in BLOCK_TYPE_MAP was not imported correctly.")
+    SIM_BLOCKS_LOADED = False
+    BLOCK_TYPE_MAP = {} # Define even on failure
+except Exception as e:
+    print(f"ERROR: Unexpected error during import: {e}")
+    SIM_BLOCKS_LOADED = False
+    BLOCK_TYPE_MAP = {} # Define even on failure
+
+# --- Map block type names (strings) to actual classes ---
+# Now this should work if the import succeeded
+if SIM_BLOCKS_LOADED:
     BLOCK_TYPE_MAP = {
         'Constant': Constant,
         'Sum': Sum,
         'Integrator': Integrator,
         'Plot': Plot,
-        # Add other block types here as they are created
-        # 'Signal Generator': SignalGenerator, # Assuming SignalGenerator exists
+        'Memory': Memory,
+        'CompareToConstant': CompareToConstant,
+        'LogicOp': LogicOp,
     }
-except ImportError as e:
-    print(f"ERROR: Could not import from sim_blocks.py: {e}")
-    print("Ensure sim_blocks.py is in the same directory or Python path.")
-    messagebox.showerror("Import Error", f"Failed to load simulation blocks: {e}\nGUI functionality will be limited.")
-    SIM_BLOCKS_LOADED = False
-    BLOCK_TYPE_MAP = {} # Empty map if import failed
-except Exception as e:
-    print(f"ERROR: Unexpected error during import: {e}")
-    messagebox.showerror("Import Error", f"Unexpected error loading simulation blocks: {e}\nGUI functionality will be limited.")
-    SIM_BLOCKS_LOADED = False
+    print("DEBUG: BLOCK_TYPE_MAP created successfully.")
+else:
+    # Ensure BLOCK_TYPE_MAP exists even if import failed, to prevent later errors
     BLOCK_TYPE_MAP = {}
 
 # --- Add the helper function with DEBUG prints ---
